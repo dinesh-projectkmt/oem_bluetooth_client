@@ -1,18 +1,91 @@
 import asyncio
+import paho.mqtt.client as mqtt
 from bleak import BleakScanner, BleakClient
+import json
+import time
 
 bluetooth_device_name = "OOM_CARDIO"
 oom_serial_number = "KE121062500004"
+web_patient_id = "67c6de22a69621459c6ae07e"
+
+BROKER = "oomcardiodev.projectkmt.com"      # replace with your broker
+PORT = 1884                       # default port for non-TLS
+TOPIC = "oom/ecg/rawData/67c6de22a69621459c6ae07e"            # replace with your topic
+USERNAME = "kmt"        # replace with your MQTT username
+PASSWORD = "Kmt123"        # replace with your MQTT password
+
+# Callback when connection is established
+async def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        print("✅ Connected successfully to MQTT Broker!")
+        # client.subscribe(TOPIC)
+        # print(f"✅ Subscribed to topic: {TOPIC}")
+    else:
+        print(f"❌ Failed to connect, return code {rc}")
+
+live_ecg_json = {
+    "dateTime": int(time.time() * 1000),  # current timestamp in milliseconds
+    "data": "",                           # empty ECG data
+    "patient": "",                        # blank patient ID
+    "leadDetection": 0,                   # default value
+    "trigger": False,                     # default value
+    "ecgVersion": 0                       # default version
+}
 
 write_once = False
 
 # Notification handler
-def notification_handler(sender, data):
+def notification_handler(sender, data):   
     try:
-        print(f"🔔 Notification from {sender}: {data.hex()}")
-    except:
-        print(f"🔔 Notification from {sender}: {data.hex()}")
+        live_ecg_json["data"] = data.hex()[0:400]
+        live_ecg_json["dateTime"] = int.from_bytes(bytes.fromhex(data.hex())[200:208], byteorder='big')  # or 'big'
+        live_ecg_json["patient"] = web_patient_id
 
+        Lead_1 = int.from_bytes(bytes.fromhex(data.hex())[219:220], byteorder='big')
+        Lead_2 = int.from_bytes(bytes.fromhex(data.hex())[220:221], byteorder='big')
+
+        if(Lead_1 == 0 and Lead_2 == 0):
+            Lead = 0
+        else:
+            Lead = 1
+
+        live_ecg_json["leadDetection"] = Lead
+
+        live_ecg_json["trigger"] = int.from_bytes(bytes.fromhex(data.hex())[208:209], byteorder='big')
+
+        if(int.from_bytes(bytes.fromhex(data.hex())[221:222], byteorder='big') == 255):
+            ecgVersion = 2
+        else:
+            ecgVersion = 5
+
+        live_ecg_json["ecgVersion"] = ecgVersion
+        print(live_ecg_json)
+        # print(f"🔔 Notification from {sender}: {data.hex()}")
+    except:
+        live_ecg_json["data"] = data.hex()[0:400]
+        live_ecg_json["dateTime"] = int.from_bytes(bytes.fromhex(data.hex())[200:208], byteorder='big')  # or 'big'
+        live_ecg_json["patient"] = web_patient_id
+
+        Lead_1 = int.from_bytes(bytes.fromhex(data.hex())[219:220], byteorder='big')
+        Lead_2 = int.from_bytes(bytes.fromhex(data.hex())[220:221], byteorder='big')
+
+        if(Lead_1 == 0 and Lead_2 == 0):
+            Lead = 0
+        else:
+            Lead = 1
+
+        live_ecg_json["leadDetection"] = Lead
+
+        live_ecg_json["trigger"] = int.from_bytes(bytes.fromhex(data.hex())[208:209], byteorder='big')
+
+        if(int.from_bytes(bytes.fromhex(data.hex())[221:222], byteorder='big') == 255):
+            ecgVersion = 2
+        else:
+            ecgVersion = 5
+
+        live_ecg_json["ecgVersion"] = ecgVersion
+        mqttclient.publish("ecg/rawData/"+web_patient_id, json.dumps(live_ecg_json))
+        print(live_ecg_json)
 # Enable notifications
 async def enable_notifications(client, characteristic_uuid):
     try:
@@ -126,6 +199,8 @@ async def scan_ble_devices():
 # Entry point
 async def main():
     await scan_ble_devices()
+
+    # # Start listening loo
     while True:
         await asyncio.sleep(1)  # Keep the loop alive for notifications
 
