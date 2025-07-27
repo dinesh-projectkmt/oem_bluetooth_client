@@ -14,8 +14,10 @@ TOPIC = "oom/ecg/rawData/67c6de22a69621459c6ae07e"            # replace with you
 USERNAME = "kmt"        # replace with your MQTT username
 PASSWORD = "Kmt123"        # replace with your MQTT password
 
+mqtt_client = mqtt.Client()
+
 # Callback when connection is established
-async def on_connect(client, userdata, flags, rc):
+def on_connect(client, userdata, flags, rc):
     if rc == 0:
         print("✅ Connected successfully to MQTT Broker!")
         # client.subscribe(TOPIC)
@@ -60,6 +62,7 @@ def notification_handler(sender, data):
 
         live_ecg_json["ecgVersion"] = ecgVersion
         print(live_ecg_json)
+        mqtt_client.publish("oom/ecg/rawData/" + web_patient_id, json.dumps(live_ecg_json))
         # print(f"🔔 Notification from {sender}: {data.hex()}")
     except:
         live_ecg_json["data"] = data.hex()[0:400]
@@ -84,7 +87,7 @@ def notification_handler(sender, data):
             ecgVersion = 5
 
         live_ecg_json["ecgVersion"] = ecgVersion
-        mqttclient.publish("ecg/rawData/"+web_patient_id, json.dumps(live_ecg_json))
+        mqttclient.publish("oom/ecg/rawData/" + web_patient_id, json.dumps(live_ecg_json))
         print(live_ecg_json)
 # Enable notifications
 async def enable_notifications(client, characteristic_uuid):
@@ -196,13 +199,21 @@ async def scan_ble_devices():
 
         print("❌ Target device not found.")
 
-# Entry point
+def mqtt_thread_function():
+    # mqtt_client = mqtt.Client()
+    mqtt_client.username_pw_set(USERNAME, PASSWORD)
+    mqtt_client.on_connect = on_connect
+    mqtt_client.connect(BROKER, PORT, 60)
+    mqtt_client.loop_forever()  # Blocking call in a thread
+
 async def main():
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, mqtt_thread_function)  # ✅ don't await it
+
     await scan_ble_devices()
 
-    # # Start listening loo
     while True:
-        await asyncio.sleep(1)  # Keep the loop alive for notifications
+        await asyncio.sleep(1)  # keep loop alive
 
 if __name__ == "__main__":
     asyncio.run(main())
